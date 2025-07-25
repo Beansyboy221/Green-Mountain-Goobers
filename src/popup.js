@@ -2,15 +2,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const categoryList = document.getElementById('category-list');
     const newCategoryInput = document.getElementById('new-category');
     const addButton = document.getElementById('add-category');
+    const geminiModelInput = document.getElementById('gemini-model');
     const apiKeyInput = document.getElementById('api-key');
     const saveApiKeyButton = document.getElementById('save-api-key');
     const clientIdInput = document.getElementById('client-id');
     const saveClientIdButton = document.getElementById('save-client-id');
 
     // Load existing categories, API key, and Client ID
-    chrome.storage.sync.get(['categories', 'geminiApiKey', 'googleClientId'], (result) => {
+    chrome.storage.sync.get(['categories', 'geminiApiKey', 'geminiModel', 'googleClientId'], (result) => {
         const categories = result.categories || [];
         categories.forEach(category => addCategoryToUI(category.name, category.notify));
+        if (result.geminiModel) {
+            geminiModelInput.value = result.geminiModel;
+        }
         if (result.geminiApiKey) {
             apiKeyInput.value = result.geminiApiKey;
         }
@@ -30,6 +34,18 @@ document.addEventListener('DOMContentLoaded', () => {
             alert('Please enter a valid Gemini API key.');
         }
     });
+
+    // Save Gemini model
+    function saveGeminiModel() {
+        const model = geminiModelInput.value.trim();
+        if (model) {
+            chrome.storage.sync.set({ geminiModel: model }, () => {
+                alert('Gemini model saved!');
+            });
+        } else {
+            alert('Please enter a valid Gemini model.');
+        }
+    }
 
     // Save Google Client ID
     saveClientIdButton.addEventListener('click', () => {
@@ -60,6 +76,7 @@ document.addEventListener('DOMContentLoaded', () => {
         div.innerHTML = `
             <span>${name}</span>
             <input type="checkbox" ${notify ? 'checked' : ''} data-name="${name}">
+            <button class="delete-category">Delete</button>
         `;
         categoryList.appendChild(div);
         div.querySelector('input').addEventListener('change', (e) => {
@@ -85,4 +102,18 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+
+    // Delete category
+    categoryList.addEventListener('click', (element) => {
+        if (element.target.classList.contains('delete-category')) {
+            const categoryItem = element.target.parentElement;
+            const name = categoryItem.querySelector('span').textContent;
+            categoryItem.remove();
+            chrome.storage.sync.get(['categories'], (result) => {
+                const categories = result.categories || [];
+                const updatedCategories = categories.filter(c => c.name !== name);
+                chrome.storage.sync.set({ categories: updatedCategories });
+            });
+        }
+    });
 });

@@ -1,3 +1,4 @@
+
 const GMAIL_API = 'https://www.googleapis.com/gmail/v1/users/me';
 const ALARM_NAME = 'gmailSorterAlarm';
 
@@ -28,10 +29,9 @@ function setupAlarm() {
         if (alarm) {
             console.log('DEBUG: Alarm already exists.', alarm);
         } else {
-            // Create an alarm to fire every 2 minutes.
             chrome.alarms.create(ALARM_NAME, {
-                delayInMinutes: 1, // Check 1 minute after startup
-                periodInMinutes: 2  // Then check every 2 minutes
+                delayInMinutes: 1,
+                periodInMinutes: 2
             });
             console.log('DEBUG: Gmail Sorter alarm created.');
         }
@@ -92,7 +92,7 @@ async function processNewEmails() {
 
             if (!emailDataResponse.ok) {
                 console.error(`DEBUG: Failed to fetch email data for ID ${email.id}. Status: ${emailDataResponse.status}. Response:`, emailData);
-                continue; // Skip to the next email
+                continue;
             }
 
             const emailContent = emailData.snippet;
@@ -134,37 +134,46 @@ async function categorizeEmail(emailContent, categories) {
             console.log('DEBUG: Gemini API key found.');
 
             const categoryNames = categories.map(c => c.name).join(', ');
-            const prompt = `Classify the following email into one of these categories: ${categoryNames}. Return only the category name.\n\nEmail: ${emailContent}`;
+            const prompt = `Try to classify the following email into one of these categories: ${categoryNames}. Return only the category name.\n\nEmail: ${emailContent}`;
             console.log('DEBUG: Prompt for Gemini API:', prompt);
 
-            const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
-            console.log(`DEBUG: Sending request to Gemini API: ${geminiUrl}`);
+            chrome.storage.sync.get(['geminiModel'], async (modelResult) => {
+                const geminiModel = modelResult.geminiModel || 'gemini-2.0-flash-lite';
+                console.log(`DEBUG: Using Gemini model: ${geminiModel}`);
 
-            try {
-                const response = await fetch(geminiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contents: [{ parts: [{ text: prompt }] }],
-                    }),
-                });
+                const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${GEMINI_API_KEY}`;
+                console.log(`DEBUG: Sending request to Gemini API: ${geminiUrl}`);
 
-                const data = await response.json();
-                console.log('DEBUG: Raw response from Gemini API:', JSON.stringify(data, null, 2));
+                try {
+                    const response = await fetch(geminiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: prompt }] }],
+                        }),
+                    });
 
-                if (response.ok && data.candidates && data.candidates[0].content.parts[0].text) {
-                    const category = data.candidates[0].content.parts[0].text.trim();
-                    console.log(`DEBUG: Gemini API returned category: "${category}"`);
-                    resolve(category);
-                } else {
-                    const errorDetail = data.error ? JSON.stringify(data.error) : 'No candidate or text part in response.';
-                    console.error('DEBUG: Invalid response from Gemini API.', errorDetail);
-                    reject(new Error(`Invalid response from Gemini API: ${errorDetail}`));
+                    const data = await response.json();
+                    console.log('DEBUG: Raw response from Gemini API:', JSON.stringify(data, null, 2));
+
+                    if (response.ok && data.candidates && data.candidates[0].content.parts[0].text) {
+                        const category = data.candidates[0].content.parts[0].text.trim();
+                        console.log(`DEBUG: Gemini API returned category: "${category}"`);
+                        if (!categories.some(c => c.name === category)) {
+                            console.warn(`DEBUG: Category "${category}" not found in defined categories. Defaulting to "Uncategorized".`);
+                            return resolve('Uncategorized');
+                        }
+                        resolve(category);
+                    } else {
+                        const errorDetail = data.error ? JSON.stringify(data.error) : 'No candidate or text part in response.';
+                        console.error('DEBUG: Invalid response from Gemini API.', errorDetail);
+                        reject(new Error(`Invalid response from Gemini API: ${errorDetail}`));
+                    }
+                } catch (error) {
+                    console.error('DEBUG: Error during fetch to Gemini API.', error.message, error.stack);
+                    reject(error);
                 }
-            } catch (error) {
-                console.error('DEBUG: Error during fetch to Gemini API.', error.message, error.stack);
-                reject(error);
-            }
+            });
         });
     });
 }
@@ -173,7 +182,6 @@ async function categorizeEmail(emailContent, categories) {
 async function applyLabel(token, messageId, category) {
     console.log(`DEBUG: Starting applyLabel for message ${messageId} with category "${category}".`);
     try {
-        // First, get the ID for the category label, creating it if it doesn't exist.
         const labelsUrl = `${GMAIL_API}/labels`;
         console.log(`DEBUG: Fetching existing labels from ${labelsUrl}`);
         const labelResponse = await fetch(labelsUrl, {
@@ -205,14 +213,14 @@ async function applyLabel(token, messageId, category) {
                 console.log(`DEBUG: Label "${category}" created successfully with ID: ${labelId}`);
             } else {
                 console.error(`DEBUG: Failed to create label "${category}". Response:`, newLabel);
-                return; // Stop if we can't get a valid label
+                return;
             }
         }
 
         const modifyUrl = `${GMAIL_API}/messages/${messageId}/modify`;
         const modifyPayload = {
-            addLabelIds: [labelId],   // Apply the new category label
-            removeLabelIds: ['INBOX'] // Remove from Inbox
+            addLabelIds: [labelId],
+            removeLabelIds: ['INBOX']
         };
         console.log(`DEBUG: Modifying email ${messageId} at ${modifyUrl} with payload:`, JSON.stringify(modifyPayload));
         const modifyResponse = await fetch(modifyUrl, {
