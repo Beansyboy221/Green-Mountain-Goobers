@@ -1,0 +1,22 @@
+{
+    "manifest_version": 3,
+    "name": "Gmail AutoSorter",
+    "version": "1.0",
+    "description": "Automatically sorts Gmail emails into user-defined categories using Gemini AI.",
+    "permissions": [
+        "storage",
+        "notifications",
+        "identity",
+        "alarms"
+    ],
+    "host_permissions": [
+        "https://mail.google.com/*",
+        "https://www.googleapis.com/*"
+    ],
+    "background": {
+        "service_worker": "background.js"
+    },
+    "action": {
+        "default_popup": "popup.html"
+    }
+}

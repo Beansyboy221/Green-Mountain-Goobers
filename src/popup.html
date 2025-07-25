@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Gmail Sorter</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+
+<body>
+    <h2>Gmail AutoSorter</h2>
+    <div>
+        <label for="api-key">Gemini API Key:</label>
+        <input type="text" id="api-key" placeholder="Enter Gemini API Key">
+        <button id="save-api-key">Save</button>
+    </div>
+    <div>
+        <label for="client-id">Google Client ID:</label>
+        <input type="text" id="client-id" placeholder="Enter Google Client ID">
+        <button id="save-client-id">Save</button>
+    </div>
+    <hr>
+    <div id="category-list"></div>
+    <input type="text" id="new-category" placeholder="Add new category">
+    <button id="add-category">Add</button>
+    <script src="popup.js"></script>
+</body>
+
+</html>
