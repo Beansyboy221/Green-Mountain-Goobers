@@ -4,50 +4,11 @@ const ALARM_NAME = 'gmailSorterAlarm';
 // Authenticate with Gmail API
 async function authenticate() {
     return new Promise((resolve, reject) => {
-        // 1. First, get the Client ID that the user saved in the popup.
-        chrome.storage.sync.get(['googleClientId'], (result) => {
-            const clientId = result.googleClientId;
-            if (!clientId) {
-                // If it's not in storage, we can't proceed.
-                return reject(new Error('Google Client ID not set. Please configure it in the extension popup.'));
+        chrome.identity.getAuthToken({ interactive: true }, (token) => {
+            if (chrome.runtime.lastError || !token) {
+                return reject(new Error(chrome.runtime.lastError?.message || 'Could not retrieve auth token.'));
             }
-
-            const scopes = [
-                "https://www.googleapis.com/auth/gmail.modify",
-                "https://www.googleapis.com/auth/gmail.labels"
-            ].join(' ');
-
-            // This gets the special redirect URL for our extension.
-            const redirectUri = chrome.identity.getRedirectURL();
-            
-            // 2. Manually construct the authentication URL, inserting the user's Client ID.
-            let authUrl = `https://accounts.google.com/o/oauth2/v2/auth`;
-            authUrl += `?client_id=${clientId}`; // <-- DYNAMICALLY INSERTED
-            authUrl += `&response_type=token`;
-            authUrl += `&redirect_uri=${encodeURIComponent(redirectUri)}`;
-            authUrl += `&scope=${encodeURIComponent(scopes)}`;
-            authUrl += `&prompt=consent`; // Prompting ensures they see the consent screen.
-
-            // 3. Launch the authentication flow.
-            chrome.identity.launchWebAuthFlow({
-                url: authUrl,
-                interactive: true
-            }, (redirect_url) => {
-                if (chrome.runtime.lastError || !redirect_url) {
-                    return reject(new Error(chrome.runtime.lastError?.message || 'Authentication failed. The user may have closed the window.'));
-                }
-
-                // 4. Parse the token from the response URL.
-                const url = new URL(redirect_url);
-                const params = new URLSearchParams(url.hash.substring(1));
-                const accessToken = params.get('access_token');
-
-                if (accessToken) {
-                    resolve(accessToken);
-                } else {
-                    reject(new Error('Authentication failed: Could not extract access token from redirect URL.'));
-                }
-            });
+            resolve(token);
         });
     });
 }
@@ -107,6 +68,7 @@ async function processNewEmails() {
             const emailContent = emailData.snippet;
             try {
                 const category = await categorizeEmail(emailContent, categories);
+                console.log(`Email snippet: "${emailContent.substring(0, 50)}..." -> Gemini classified as: "${category}"`);
                 await applyLabel(token, email.id, category);
 
                 const catObj = categories.find(c => c.name === category);
@@ -156,6 +118,7 @@ async function categorizeEmail(emailContent, categories) {
 
 // Apply label to email
 async function applyLabel(token, messageId, category) {
+    // First, get the ID for the category label, creating it if it doesn't exist.
     const labelResponse = await fetch(`${GMAIL_API}/labels`, {
         headers: { Authorization: `Bearer ${token}` },
     });
@@ -163,19 +126,32 @@ async function applyLabel(token, messageId, category) {
     let labelId = labels.labels.find(l => l.name === category)?.id;
 
     if (!labelId) {
-        const createLabel = await fetch(`${GMAIL_API}/labels`, {
+        console.log(`Label "${category}" not found. Creating it...`);
+        const createLabelResponse = await fetch(`${GMAIL_API}/labels`, {
             method: 'POST',
             headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({ name: category, labelListVisibility: 'labelShow', messageListVisibility: 'show' }),
         });
-        labelId = (await createLabel.json()).id;
+        const newLabel = await createLabelResponse.json();
+        if (newLabel.id) {
+            labelId = newLabel.id;
+            console.log(`Label "${category}" created with ID: ${labelId}`);
+        } else {
+            console.error('Error: Failed to create or find a label ID for the category:', category, newLabel);
+            return; // Stop execution if we can't get a valid label
+        }
     }
 
     await fetch(`${GMAIL_API}/messages/${messageId}/modify`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ addLabelIds: [labelId] }),
+        body: JSON.stringify({
+            addLabelIds: [labelId],   // Apply the new category label
+            removeLabelIds: ['INBOX'] // Remove from Inbox
+        }),
     });
+
+    console.log(`Email ${messageId} moved to label "${category}".`);
 }
 
 // Send notification
