@@ -1,3 +1,4 @@
+
 const GMAIL_API = 'https://www.googleapis.com/gmail/v1/users/me';
 const ALARM_NAME = 'gmailSorterAlarm';
 
@@ -134,37 +135,42 @@ async function categorizeEmail(emailContent, categories) {
             console.log('DEBUG: Gemini API key found.');
 
             const categoryNames = categories.map(c => c.name).join(', ');
-            const prompt = `Classify the following email into one of these categories: ${categoryNames}. Return only the category name.\n\nEmail: ${emailContent}`;
+            const prompt = `Try to classify the following email into one of these categories: ${categoryNames}. Return only the category name. If none of the categories fit logically to this email, return nothing.\n\nEmail: ${emailContent}`;
             console.log('DEBUG: Prompt for Gemini API:', prompt);
 
-            const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
-            console.log(`DEBUG: Sending request to Gemini API: ${geminiUrl}`);
+            chrome.storage.sync.get(['geminiModel'], async (modelResult) => {
+                const geminiModel = modelResult.geminiModel || 'gemini-2.0-flash-lite';
+                console.log(`DEBUG: Using Gemini model: ${geminiModel}`);
 
-            try {
-                const response = await fetch(geminiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contents: [{ parts: [{ text: prompt }] }],
-                    }),
-                });
+                const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${GEMINI_API_KEY}`;
+                console.log(`DEBUG: Sending request to Gemini API: ${geminiUrl}`);
 
-                const data = await response.json();
-                console.log('DEBUG: Raw response from Gemini API:', JSON.stringify(data, null, 2));
+                try {
+                    const response = await fetch(geminiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: prompt }] }],
+                        }),
+                    });
 
-                if (response.ok && data.candidates && data.candidates[0].content.parts[0].text) {
-                    const category = data.candidates[0].content.parts[0].text.trim();
-                    console.log(`DEBUG: Gemini API returned category: "${category}"`);
-                    resolve(category);
-                } else {
-                    const errorDetail = data.error ? JSON.stringify(data.error) : 'No candidate or text part in response.';
-                    console.error('DEBUG: Invalid response from Gemini API.', errorDetail);
-                    reject(new Error(`Invalid response from Gemini API: ${errorDetail}`));
+                    const data = await response.json();
+                    console.log('DEBUG: Raw response from Gemini API:', JSON.stringify(data, null, 2));
+
+                    if (response.ok && data.candidates && data.candidates[0].content.parts[0].text) {
+                        const category = data.candidates[0].content.parts[0].text.trim();
+                        console.log(`DEBUG: Gemini API returned category: "${category}"`);
+                        resolve(category);
+                    } else {
+                        const errorDetail = data.error ? JSON.stringify(data.error) : 'No candidate or text part in response.';
+                        console.error('DEBUG: Invalid response from Gemini API.', errorDetail);
+                        reject(new Error(`Invalid response from Gemini API: ${errorDetail}`));
+                    }
+                } catch (error) {
+                    console.error('DEBUG: Error during fetch to Gemini API.', error.message, error.stack);
+                    reject(error);
                 }
-            } catch (error) {
-                console.error('DEBUG: Error during fetch to Gemini API.', error.message, error.stack);
-                reject(error);
-            }
+            });
         });
     });
 }
