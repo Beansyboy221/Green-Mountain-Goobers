@@ -135,7 +135,7 @@ async function categorizeEmail(emailContent, categories) {
             console.log('DEBUG: Gemini API key found.');
 
             const categoryNames = categories.map(c => c.name).join(', ');
-            const prompt = `Try to classify the following email into one of these categories: ${categoryNames}. Return only the category name. If none of the categories fit logically to this email, return nothing.\n\nEmail: ${emailContent}`;
+            const prompt = `Try to classify the following email into one of these categories: ${categoryNames}. Return only the category name.\n\nEmail: ${emailContent}`;
             console.log('DEBUG: Prompt for Gemini API:', prompt);
 
             chrome.storage.sync.get(['geminiModel'], async (modelResult) => {
@@ -160,6 +160,10 @@ async function categorizeEmail(emailContent, categories) {
                     if (response.ok && data.candidates && data.candidates[0].content.parts[0].text) {
                         const category = data.candidates[0].content.parts[0].text.trim();
                         console.log(`DEBUG: Gemini API returned category: "${category}"`);
+                        if (!categories.some(c => c.name === category)) {
+                            console.warn(`DEBUG: Category "${category}" not found in defined categories. Defaulting to "Uncategorized".`);
+                            return resolve('Uncategorized');
+                        }
                         resolve(category);
                     } else {
                         const errorDetail = data.error ? JSON.stringify(data.error) : 'No candidate or text part in response.';
