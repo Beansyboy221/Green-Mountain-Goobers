@@ -29,10 +29,9 @@ function setupAlarm() {
         if (alarm) {
             console.log('DEBUG: Alarm already exists.', alarm);
         } else {
-            // Create an alarm to fire every 2 minutes.
             chrome.alarms.create(ALARM_NAME, {
-                delayInMinutes: 1, // Check 1 minute after startup
-                periodInMinutes: 2  // Then check every 2 minutes
+                delayInMinutes: 1,
+                periodInMinutes: 2
             });
             console.log('DEBUG: Gmail Sorter alarm created.');
         }
@@ -93,7 +92,7 @@ async function processNewEmails() {
 
             if (!emailDataResponse.ok) {
                 console.error(`DEBUG: Failed to fetch email data for ID ${email.id}. Status: ${emailDataResponse.status}. Response:`, emailData);
-                continue; // Skip to the next email
+                continue;
             }
 
             const emailContent = emailData.snippet;
@@ -183,7 +182,6 @@ async function categorizeEmail(emailContent, categories) {
 async function applyLabel(token, messageId, category) {
     console.log(`DEBUG: Starting applyLabel for message ${messageId} with category "${category}".`);
     try {
-        // First, get the ID for the category label, creating it if it doesn't exist.
         const labelsUrl = `${GMAIL_API}/labels`;
         console.log(`DEBUG: Fetching existing labels from ${labelsUrl}`);
         const labelResponse = await fetch(labelsUrl, {
@@ -215,14 +213,14 @@ async function applyLabel(token, messageId, category) {
                 console.log(`DEBUG: Label "${category}" created successfully with ID: ${labelId}`);
             } else {
                 console.error(`DEBUG: Failed to create label "${category}". Response:`, newLabel);
-                return; // Stop if we can't get a valid label
+                return;
             }
         }
 
         const modifyUrl = `${GMAIL_API}/messages/${messageId}/modify`;
         const modifyPayload = {
-            addLabelIds: [labelId],   // Apply the new category label
-            removeLabelIds: ['INBOX'] // Remove from Inbox
+            addLabelIds: [labelId],
+            removeLabelIds: ['INBOX']
         };
         console.log(`DEBUG: Modifying email ${messageId} at ${modifyUrl} with payload:`, JSON.stringify(modifyPayload));
         const modifyResponse = await fetch(modifyUrl, {

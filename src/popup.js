@@ -76,6 +76,7 @@ document.addEventListener('DOMContentLoaded', () => {
         div.innerHTML = `
             <span>${name}</span>
             <input type="checkbox" ${notify ? 'checked' : ''} data-name="${name}">
+            <button class="delete-category">Delete</button>
         `;
         categoryList.appendChild(div);
         div.querySelector('input').addEventListener('change', (e) => {
@@ -101,4 +102,18 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+
+    // Delete category
+    categoryList.addEventListener('click', (element) => {
+        if (element.target.classList.contains('delete-category')) {
+            const categoryItem = element.target.parentElement;
+            const name = categoryItem.querySelector('span').textContent;
+            categoryItem.remove();
+            chrome.storage.sync.get(['categories'], (result) => {
+                const categories = result.categories || [];
+                const updatedCategories = categories.filter(c => c.name !== name);
+                chrome.storage.sync.set({ categories: updatedCategories });
+            });
+        }
+    });
 });
