@@ -1,136 +1,142 @@
-document.addEventListener('DOMContentLoaded', () => {
-    const categoryList = document.getElementById('category-list');
-    const newCategoryInput = document.getElementById('new-category');
-    const addButton = document.getElementById('add-category');
-    const geminiModelInput = document.getElementById('gemini-model');
-    const apiKeyInput = document.getElementById('api-key');
-    const saveApiKeyButton = document.getElementById('save-api-key');
-    const clientIdInput = document.getElementById('client-id');
-    const autoCategoryToggle = document.getElementById('auto-category-toggle');
-    const autoCategoryLimit = document.getElementById('auto-category-limit');
-    const masterToggle = document.getElementById('master-toggle');
+const categoryList = document.getElementById('category-list');
+const newCategoryInput = document.getElementById('new-category');
+const addButton = document.getElementById('add-category');
+const geminiModelInput = document.getElementById('gemini-model');
+const apiKeyInput = document.getElementById('api-key');
+const saveApiKeyButton = document.getElementById('save-api-key');
+const autoCategoryToggle = document.getElementById('auto-category-toggle');
+const autoCategoryLimit = document.getElementById('auto-category-limit');
+const masterToggle = document.getElementById('master-toggle');
+const resetInboxButton = document.getElementById('reset-inbox-btn');
 
-    // Load all existing settings from storage
-    chrome.storage.sync.get(['categories', 'geminiApiKey', 'geminiModel', 'googleClientId', 'autoCategoryToggle', 'autoCategoryLimit', 'masterToggleEnabled', 'googleProjectId'], (result) => {
-        const categories = result.categories || [];
-        categories.forEach(category => addCategoryToUI(category.name, category.notify));
+document.addEventListener('DOMContentLoaded', initializePopup);
 
-        if (result.geminiModel) {
-            geminiModelInput.value = result.geminiModel;
-        }
-        if (result.geminiApiKey) {
-            apiKeyInput.value = result.geminiApiKey;
-        }
-        if (result.googleClientId) {
-            clientIdInput.value = result.googleClientId;
-        }
-        if (result.autoCategoryToggle) {
-            autoCategoryToggle.checked = result.autoCategoryToggle;
-        }
-        if (result.autoCategoryLimit) {
-            autoCategoryLimit.value = result.autoCategoryLimit;
-        }
-        masterToggle.checked = result.masterToggleEnabled !== false;
-    });
+async function initializePopup() {
+    // Load all settings and categories from storage
+    const settings = await chrome.storage.sync.get([
+        'categories', 'geminiApiKey', 'geminiModel', 
+        'autoCategoryToggle', 'autoCategoryLimit', 'masterToggleEnabled'
+    ]);
 
-    // Save Master Toggle state
-    masterToggle.addEventListener('change', () => {
-        chrome.storage.sync.set({ masterToggleEnabled: masterToggle.checked });
-    });
+    // Populate categories
+    categoryList.innerHTML = ''; // Clear list before repopulating
+    const categories = settings.categories || [];
+    categories.forEach(category => addCategoryToUI(category.name, category.notify, category.auto_generated));
 
-    // Save Gemini API key
-    saveApiKeyButton.addEventListener('click', () => {
-        const apiKey = apiKeyInput.value.trim();
-        if (apiKey) {
-            chrome.storage.sync.set({ geminiApiKey: apiKey }, () => {
-                alert('Gemini API key saved!');
-            });
-        } else {
-            alert('Please enter a valid Gemini API key.');
-        }
-    });
+    // Populate settings
+    geminiModelInput.value = settings.geminiModel || 'gemini-2.5-flash';
+    apiKeyInput.value = settings.geminiApiKey || '';
+    autoCategoryToggle.checked = settings.autoCategoryToggle || false;
+    autoCategoryLimit.value = settings.autoCategoryLimit || 5;
+    masterToggle.checked = settings.masterToggleEnabled !== false;
 
-    // Save Gemini model
-    geminiModelInput.addEventListener('change', () => {
-        const model = geminiModelInput.value.trim();
-        if (model) {
-            chrome.storage.sync.set({ geminiModel: model }, () => {
-                alert('Gemini model saved!');
-            });
-        }
-    });
+    // Attach event listeners
+    setupEventListeners();
+}
 
-    // Add new category
-    addButton.addEventListener('click', () => {
-        const name = newCategoryInput.value.trim();
-        if (name) {
-            const category = { name, notify: false, auto_generated: false };
-            addCategoryToUI(name, false);
-            saveCategory(category);
-            newCategoryInput.value = '';
-        }
-    });
-    
-    // Setup event listeners for auto-category settings
+function setupEventListeners() {
+    addButton.addEventListener('click', handleAddCategory);
+    saveApiKeyButton.addEventListener('click', handleSaveApiKey);
+    resetInboxButton.addEventListener('click', handleResetInbox);
+
+    masterToggle.addEventListener('change', () => chrome.storage.sync.set({ masterToggleEnabled: masterToggle.checked }));
+    geminiModelInput.addEventListener('change', () => chrome.storage.sync.set({ geminiModel: geminiModelInput.value }));
     autoCategoryToggle.addEventListener('change', saveAutoCategorySettings);
     autoCategoryLimit.addEventListener('change', saveAutoCategorySettings);
+}
 
-    function addCategoryToUI(name, notify) {
-        const div = document.createElement('div');
-        div.className = 'category-item';
-        div.innerHTML = `
-            <span>${name}</span>
-            <input type="checkbox" ${notify ? 'checked' : ''} data-name="${name}">
-            <button class="delete-category" style="background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%); color: white;">Delete</button>
-        `;
-        categoryList.appendChild(div);
-        div.querySelector('input').addEventListener('change', (e) => {
-            updateCategoryNotify(name, e.target.checked);
-        });
-    }
+function addCategoryToUI(name, notify, isAutoGenerated = false) {
+    const div = document.createElement('div');
+    div.className = 'category-item';
+    div.innerHTML = `
+        <span title="${isAutoGenerated ? 'This category was automatically generated.' : ''}">
+            ${name} ${isAutoGenerated ? ' (auto)' : ''}
+        </span>
+        <div class="controls">
+            <input type="checkbox" class="toggle-switch" ${notify ? 'checked' : ''} data-name="${name}">
+            <button class="delete-category" data-name="${name}">Delete</button>
+        </div>
+    `;
+    categoryList.appendChild(div);
 
-    function saveCategory(category) {
-        chrome.storage.sync.get(['categories'], (result) => {
-            const categories = result.categories || [];
-            categories.push(category);
-            chrome.storage.sync.set({ categories });
-        });
-    }
-
-    function updateCategoryNotify(name, notify) {
-        chrome.storage.sync.get(['categories'], (result) => {
-            const categories = result.categories || [];
-            const category = categories.find(c => c.name === name);
-            if (category) {
-                category.notify = notify;
-                chrome.storage.sync.set({ categories });
-            }
-        });
-    }
-
-    // Delete category
-    categoryList.addEventListener('click', (element) => {
-        if (element.target.classList.contains('delete-category')) {
-            const categoryItem = element.target.parentElement;
-            const name = categoryItem.querySelector('span').textContent;
-            categoryItem.remove();
-            chrome.storage.sync.get(['categories'], (result) => {
-                let categories = result.categories || [];
-                categories = categories.filter(c => c.name !== name);
-                chrome.storage.sync.set({ categories: categories });
-            });
-        }
+    div.querySelector('.toggle-switch').addEventListener('change', (e) => {
+        updateCategoryNotify(name, e.target.checked);
     });
+    div.querySelector('.delete-category').addEventListener('click', () => {
+        div.remove();
+        removeCategory(name);
+    });
+}
 
-    // Save automatic category generation settings
-    function saveAutoCategorySettings() {
-        const isEnabled = document.getElementById('auto-category-toggle').checked;
-        const limit = document.getElementById('auto-category-limit').value;
-        chrome.storage.sync.set({
-            autoCategoryToggle: isEnabled,
-            autoCategoryLimit: parseInt(limit, 10) || 0
-        }, () => {
-            alert('Auto-category settings saved!');
-        });
+async function handleAddCategory() {
+    const name = newCategoryInput.value.trim();
+    if (name) {
+        const category = { name, notify: false, auto_generated: false };
+        await saveCategory(category);
+        addCategoryToUI(name, false);
+        newCategoryInput.value = '';
     }
-});
+}
+
+function handleResetInbox() {
+    const confirmationMessage = 'Are you sure you want to proceed?\n\nThis will:\n- Move all emails from sorted categories back to the inbox.\n- Delete the corresponding labels from your Gmail account.\n- Remove all categories from this extension.';
+    if (!confirm(confirmationMessage)) return;
+
+    resetInboxButton.disabled = true;
+    resetInboxButton.textContent = 'Resetting...';
+    alert('Starting the reset process. This may take a moment. You will be notified upon completion.');
+
+    chrome.runtime.sendMessage({ action: 'resetToInbox' }, (response) => {
+        if (response) {
+            alert(response.success ? `Reset Complete: ${response.message}` : `Error: ${response.message}`);
+            if (response.success) {
+                categoryList.innerHTML = '';
+            }
+        } else {
+            alert('An unexpected error occurred. No response from the background script.');
+        }
+        resetInboxButton.disabled = false;
+        resetInboxButton.textContent = 'Reset to Inbox';
+    });
+}
+
+function handleSaveApiKey() {
+    const apiKey = apiKeyInput.value.trim();
+    if (apiKey) {
+        chrome.storage.sync.set({ geminiApiKey: apiKey }, () => {
+            alert('Gemini API key saved!');
+        });
+    } else {
+        alert('Please enter a valid Gemini API key.');
+    }
+}
+
+async function saveCategory(category) {
+    const { categories = [] } = await chrome.storage.sync.get('categories');
+    if (!categories.some(c => c.name === category.name)) {
+        categories.push(category);
+        await chrome.storage.sync.set({ categories });
+    }
+}
+
+async function removeCategory(name) {
+    let { categories = [] } = await chrome.storage.sync.get('categories');
+    categories = categories.filter(c => c.name !== name);
+    await chrome.storage.sync.set({ categories });
+}
+
+async function updateCategoryNotify(name, notify) {
+    const { categories = [] } = await chrome.storage.sync.get('categories');
+    const category = categories.find(c => c.name === name);
+    if (category) {
+        category.notify = notify;
+        await chrome.storage.sync.set({ categories });
+    }
+}
+
+function saveAutoCategorySettings() {
+    chrome.storage.sync.set({
+        autoCategoryToggle: autoCategoryToggle.checked,
+        autoCategoryLimit: parseInt(autoCategoryLimit.value, 10) || 1
+    });
+}
