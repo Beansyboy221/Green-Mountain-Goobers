@@ -12,7 +12,9 @@ Gmail AutoSorter is a powerful browser extension that automatically categorizes 
 - **Smart Notifications**: Get notified about important emails in specific categories
 - **Easy Setup**: Simple configuration with your Gemini API key
 
-## !NOTE: As an unpublished Chrome Extension, this project also currently requires you to input your own Google Client ID in the manifest.json file and enable Gmail API for your cloud project!
+### !NOTE!: As an unpublished Chrome Extension, this project also currently requires you to input your own Google Client ID in the manifest.json file and enable Gmail API for your cloud project
+
+- Create a new project and generate a Client ID for a Chrome Extension in the credentials tab. Input the extension ID from the "Manage Extensions" page and copy the Client ID. Finally, paste the ID in manifest.json, replacing the current ID.
 
 ---
 
