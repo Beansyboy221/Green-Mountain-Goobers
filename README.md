@@ -40,8 +40,8 @@ Before installing Gmail AutoSorter, you'll need:
 2. Open Chrome and go to `chrome://extensions/`
 3. Enable "Developer mode" (toggle in top right)
 4. Click "Load unpacked"
-5. Select the folder containing the extension files
-6. The Gmail AutoSorter icon should appear in your browser toolbar
+5. Select the src folder
+6. The extension should be enabled in your browser
 
 ---
 
