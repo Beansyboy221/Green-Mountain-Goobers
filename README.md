@@ -1,6 +1,6 @@
 # Gmail AutoSorter - User Guide
 
-## 📧 Overview
+## 🧠 Overview
 
 Gmail AutoSorter is a powerful browser extension that automatically categorizes and organizes your Gmail inbox using Google's Gemini AI. Say goodbye to manual email sorting and hello to a clutter-free, organized inbox!
 
@@ -133,7 +133,7 @@ The extension uses Gemini AI to:
 
 ---
 
-## 📧 Using Gmail AutoSorter
+## 🔧 Using Gmail AutoSorter
 
 ### Daily Usage
 
