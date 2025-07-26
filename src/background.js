@@ -1,44 +1,43 @@
-
 const GMAIL_API = 'https://www.googleapis.com/gmail/v1/users/me';
 const ALARM_NAME = 'gmailSorterAlarm';
 
 // Authenticate with Gmail API
 async function authenticate() {
-    console.log('DEBUG: Attempting to authenticate with Gmail API.');
+    console.log('DEBUG: Attempting to authenticate.');
     return new Promise((resolve, reject) => {
         chrome.identity.getAuthToken({ interactive: true }, (token) => {
             if (chrome.runtime.lastError || !token) {
                 const errorMessage = chrome.runtime.lastError?.message || 'Could not retrieve auth token.';
                 console.error('DEBUG: Authentication failed.', errorMessage);
-                return reject(new Error(errorMessage));
+                reject(new Error(errorMessage));
+                return;
             }
-            console.log('DEBUG: Authentication successful. Token retrieved.');
+            console.log('DEBUG: Authentication successful.');
             resolve(token);
         });
     });
 }
 
-// Run setup when the extension is first installed
+// Run setup when the extension is first installed or the browser starts
 chrome.runtime.onInstalled.addListener(setupAlarm);
-// Run setup when the browser first starts
 chrome.runtime.onStartup.addListener(setupAlarm);
 
 function setupAlarm() {
     console.log('DEBUG: Running setupAlarm.');
     chrome.alarms.get(ALARM_NAME, (alarm) => {
-        if (alarm) {
-            console.log('DEBUG: Alarm already exists.', alarm);
-        } else {
+        if (!alarm) {
             chrome.alarms.create(ALARM_NAME, {
                 delayInMinutes: 1,
                 periodInMinutes: 2
             });
             console.log('DEBUG: Gmail Sorter alarm created.');
+        } else {
+            console.log('DEBUG: Alarm already exists.', alarm);
         }
     });
 }
 
-// This listener waits for the alarm to fire and then runs the processing function.
+// Listen for the alarm and trigger email processing
 chrome.alarms.onAlarm.addListener((alarm) => {
     console.log('DEBUG: chrome.alarms.onAlarm listener triggered for alarm:', alarm.name);
     if (alarm.name === ALARM_NAME) {
@@ -46,73 +45,37 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     }
 });
 
-// This function is called by the alarm.
+// Main function to process new emails, called by the alarm
 async function processNewEmails() {
     console.log('DEBUG: Alarm fired. Starting processNewEmails.');
     try {
-        const token = await authenticate();
-        const storageData = await new Promise(resolve => chrome.storage.sync.get(['categories'], r => resolve(r)));
-        const categories = storageData.categories || [];
-        console.log('DEBUG: Fetched categories from storage:', categories);
+        const result = await chrome.storage.sync.get(['masterToggleEnabled', 'categories']);
+        
+        // Check master toggle. Defaults to true (enabled) if not set.
+        if (result.masterToggleEnabled === false) {
+            console.log('DEBUG: Master toggle is disabled. Skipping inbox check.');
+            return 'Inbox checking is disabled.';
+        }
 
-        if (!categories || categories.length === 0) {
-            console.log('DEBUG: No categories defined in storage. Stopping.');
+        let categories = result.categories;
+
+        if (!categories?.length) {
+            console.log('DEBUG: No categories defined. Stopping.');
             return 'No categories defined. Stopping.';
         }
 
-        const fetchUrl = `${GMAIL_API}/messages?q=in:inbox`;
-        console.log(`DEBUG: Fetching unread emails with URL: ${fetchUrl}`);
-        const response = await fetch(fetchUrl, {
-            headers: { Authorization: `Bearer ${token}` },
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error(`DEBUG: Error fetching emails from Gmail API. Status: ${response.status}. Response: ${errorText}`);
-            throw new Error(`Gmail API error: ${response.statusText}`);
+        const token = await authenticate();
+        const emails = await fetchInboxMessages(token);
+        if (!emails.length) {
+            console.log('DEBUG: No new emails found.');
+            return 'No new emails found.';
         }
 
-        const data = await response.json();
-        const emails = data.messages || [];
-
-        if (emails.length === 0) {
-            console.log('DEBUG: No new unread emails found.');
-            return 'No new unread emails found.';
-        }
-
-        console.log(`DEBUG: Found ${emails.length} new unread email(s).`);
+        console.log(`DEBUG: Found ${emails.length} new email(s).`);
         for (const email of emails) {
-            console.log(`DEBUG: Processing email with ID: ${email.id}`);
-            const emailDataUrl = `${GMAIL_API}/messages/${email.id}?format=minimal`;
-            console.log(`DEBUG: Fetching email data from URL: ${emailDataUrl}`);
-            const emailDataResponse = await fetch(emailDataUrl, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            const emailData = await emailDataResponse.json();
-
-            if (!emailDataResponse.ok) {
-                console.error(`DEBUG: Failed to fetch email data for ID ${email.id}. Status: ${emailDataResponse.status}. Response:`, emailData);
-                continue;
-            }
-
-            const emailContent = emailData.snippet;
-            console.log(`DEBUG: Email snippet for ${email.id}: "${emailContent}"`);
-            try {
-                const category = await categorizeEmail(emailContent, categories);
-                console.log(`DEBUG: Email ${email.id} classified as "${category}" by Gemini.`);
-                await applyLabel(token, email.id, category);
-
-                const catObj = categories.find(c => c.name === category);
-                if (catObj?.notify) {
-                    console.log(`DEBUG: Notification enabled for category "${category}". Sending notification.`);
-                    sendNotification(category, emailContent);
-                } else {
-                    console.log(`DEBUG: Notification disabled for category "${category}".`);
-                }
-            } catch (error) {
-                console.error(`DEBUG: Error processing email ${email.id}.`, error.message, error.stack);
-            }
+            categories = await processSingleEmail(email, token, categories);
         }
+
         console.log(`DEBUG: Finished processing ${emails.length} email(s).`);
         return `Successfully processed ${emails.length} new email(s).`;
     } catch (error) {
@@ -121,107 +84,176 @@ async function processNewEmails() {
     }
 }
 
-// Classify email with Gemini
-async function categorizeEmail(emailContent, categories) {
-    console.log('DEBUG: Starting categorizeEmail.');
-    return new Promise((resolve, reject) => {
-        chrome.storage.sync.get(['geminiApiKey'], async (result) => {
-            const GEMINI_API_KEY = result.geminiApiKey;
-            if (!GEMINI_API_KEY) {
-                console.error('DEBUG: Gemini API key not found in storage.');
-                return reject(new Error('Gemini API key not set. Please configure it in the extension popup.'));
-            }
-            console.log('DEBUG: Gemini API key found.');
-
-            const categoryNames = categories.map(c => c.name).join(', ');
-            const prompt = `Try to classify the following email into one of these categories: ${categoryNames}. Return only the category name.\n\nEmail: ${emailContent}`;
-            console.log('DEBUG: Prompt for Gemini API:', prompt);
-
-            chrome.storage.sync.get(['geminiModel'], async (modelResult) => {
-                const geminiModel = modelResult.geminiModel || 'gemini-2.0-flash-lite';
-                console.log(`DEBUG: Using Gemini model: ${geminiModel}`);
-
-                const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${GEMINI_API_KEY}`;
-                console.log(`DEBUG: Sending request to Gemini API: ${geminiUrl}`);
-
-                try {
-                    const response = await fetch(geminiUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            contents: [{ parts: [{ text: prompt }] }],
-                        }),
-                    });
-
-                    const data = await response.json();
-                    console.log('DEBUG: Raw response from Gemini API:', JSON.stringify(data, null, 2));
-
-                    if (response.ok && data.candidates && data.candidates[0].content.parts[0].text) {
-                        const category = data.candidates[0].content.parts[0].text.trim();
-                        console.log(`DEBUG: Gemini API returned category: "${category}"`);
-                        if (!categories.some(c => c.name === category)) {
-                            console.warn(`DEBUG: Category "${category}" not found in defined categories. Defaulting to "Uncategorized".`);
-                            return resolve('Uncategorized');
-                        }
-                        resolve(category);
-                    } else {
-                        const errorDetail = data.error ? JSON.stringify(data.error) : 'No candidate or text part in response.';
-                        console.error('DEBUG: Invalid response from Gemini API.', errorDetail);
-                        reject(new Error(`Invalid response from Gemini API: ${errorDetail}`));
-                    }
-                } catch (error) {
-                    console.error('DEBUG: Error during fetch to Gemini API.', error.message, error.stack);
-                    reject(error);
-                }
-            });
-        });
+// Fetches the list of messages from the inbox
+async function fetchInboxMessages(token) {
+    const fetchUrl = `${GMAIL_API}/messages?q=in:inbox`;
+    console.log(`DEBUG: Fetching inbox emails with URL: ${fetchUrl}`);
+    const response = await fetch(fetchUrl, {
+        headers: { Authorization: `Bearer ${token}` },
     });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`DEBUG: Error fetching emails from Gmail API. Status: ${response.status}. Response: ${errorText}`);
+        throw new Error(`Gmail API error: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.messages || [];
 }
 
-// Apply label to email
-async function applyLabel(token, messageId, category) {
-    console.log(`DEBUG: Starting applyLabel for message ${messageId} with category "${category}".`);
+// Processes an individual email
+async function processSingleEmail(email, token, categories) {
+    console.log(`DEBUG: Processing email with ID: ${email.id}`);
     try {
-        const labelsUrl = `${GMAIL_API}/labels`;
-        console.log(`DEBUG: Fetching existing labels from ${labelsUrl}`);
-        const labelResponse = await fetch(labelsUrl, {
-            headers: { Authorization: `Bearer ${token}` },
-        });
-        const labelsData = await labelResponse.json();
-        if (!labelResponse.ok) {
-            console.error('DEBUG: Failed to fetch labels.', labelsData);
-            return;
+        const emailDataUrl = `${GMAIL_API}/messages/${email.id}?format=minimal`;
+        const emailDataResponse = await fetch(emailDataUrl, { headers: { Authorization: `Bearer ${token}` } });
+        if (!emailDataResponse.ok) {
+            console.error(`DEBUG: Failed to fetch email data for ID ${email.id}. Status: ${emailDataResponse.status}.`);
+            return categories;
         }
-        console.log('DEBUG: Fetched labels successfully.');
 
-        let label = labelsData.labels.find(l => l.name === category);
-        let labelId;
+        const emailData = await emailDataResponse.json();
+        const emailContent = emailData.snippet;
+        console.log(`DEBUG: Email snippet for ${email.id}: "${emailContent}"`);
 
-        if (label) {
-            labelId = label.id;
-            console.log(`DEBUG: Found existing label "${category}" with ID: ${labelId}`);
-        } else {
-            console.log(`DEBUG: Label "${category}" not found. Attempting to create it.`);
-            const createLabelResponse = await fetch(`${GMAIL_API}/labels`, {
-                method: 'POST',
-                headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: category, labelListVisibility: 'labelShow', messageListVisibility: 'show' }),
-            });
-            const newLabel = await createLabelResponse.json();
-            if (createLabelResponse.ok && newLabel.id) {
-                labelId = newLabel.id;
-                console.log(`DEBUG: Label "${category}" created successfully with ID: ${labelId}`);
+        const { categoryName, updatedCategories } = await categorizeEmail(emailContent, categories);
+        console.log(`DEBUG: Email ${email.id} classified as "${categoryName}" by Gemini.`);
+        await applyLabel(token, email.id, categoryName);
+
+        const categoryObject = updatedCategories.find(c => c.name === categoryName);
+        if (categoryObject?.notify) {
+            console.log(`DEBUG: Notification enabled for category "${categoryName}". Sending notification.`);
+            sendNotification(categoryName, emailContent);
+        }
+        
+        return updatedCategories;
+    } catch (error) {
+        console.error(`DEBUG: Error processing email ${email.id}.`, error.message, error.stack);
+        return categories;
+    }
+}
+
+// Classifies email content into a category using Gemini
+async function categorizeEmail(emailContent, categories) {
+    console.log('DEBUG: Starting categorizeEmail.');
+    const settings = await chrome.storage.sync.get(['geminiApiKey', 'geminiModel', 'autoCategoryToggle', 'autoCategoryLimit']);
+    const {
+        geminiApiKey,
+        geminiModel = 'gemini-1.5-flash-latest',
+        autoCategoryToggle = false,
+        autoCategoryLimit = 5
+    } = settings;
+
+    if (!geminiApiKey) {
+        throw new Error('Gemini API key not found. Please configure it in the extension popup.');
+    }
+    
+    let currentCategories = [...categories];
+
+    const promptTemplateUrl = chrome.runtime.getURL('prompt.txt');
+    const promptResponse = await fetch(promptTemplateUrl);
+    if (!promptResponse.ok) {
+        throw new Error('Failed to fetch the prompt.txt file.');
+    }
+    let promptTemplate = await promptResponse.text();
+
+    const categoryNames = currentCategories.map(c => c.name).join(', ');
+    
+    const prompt = promptTemplate
+        .replace('{{categoryNames}}', categoryNames)
+        .replace('{{emailContent}}', emailContent);
+
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiApiKey}`;
+
+    try {
+        const response = await fetch(geminiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+        });
+
+        const data = await response.json();
+        console.log('DEBUG: Raw response from Gemini API:', JSON.stringify(data, null, 2));
+
+        let categoryName = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+        if (!categoryName) {
+            const errorDetail = data.error ? JSON.stringify(data.error) : 'No candidate or text part in response.';
+            throw new Error(`Invalid response from Gemini API: ${errorDetail}`);
+        }
+        console.log(`DEBUG: Gemini API suggested category: "${categoryName}"`);
+
+        const isExistingCategory = currentCategories.some(c => c.name === categoryName);
+        const autoGeneratedCount = currentCategories.filter(c => c.auto_generated).length;
+        const canAutoCreate = autoCategoryToggle && autoGeneratedCount < autoCategoryLimit;
+
+        if (!isExistingCategory) {
+            if (canAutoCreate) {
+                console.log(`DEBUG: New category "${categoryName}" will be auto-created.`);
+                const newCategory = { name: categoryName, notify: false, auto_generated: true };
+                currentCategories.push(newCategory);
+                await chrome.storage.sync.set({ categories: currentCategories });
             } else {
-                console.error(`DEBUG: Failed to create label "${category}". Response:`, newLabel);
-                return;
+                console.log(`DEBUG: Auto-create for new category "${categoryName}" is disabled or limit is reached. Falling back to "Uncategorized".`);
+                categoryName = "Uncategorized";
             }
         }
 
+        console.log(`DEBUG: Auto-generated categories count: ${autoGeneratedCount}`);
+        console.log(`DEBUG: Final category: "${categoryName}"`);
+        return { categoryName, updatedCategories: currentCategories };
+
+    } catch (error) {
+        console.error('DEBUG: Error during fetch to Gemini API.', error.message, error.stack);
+        throw error;
+    }
+}
+
+// Finds an existing label by name or creates it if it doesn't exist
+async function findOrCreateLabel(token, categoryName) {
+    const labelsUrl = `${GMAIL_API}/labels`;
+    const response = await fetch(labelsUrl, { headers: { Authorization: `Bearer ${token}` } });
+    const labelsData = await response.json();
+
+    if (!response.ok) {
+        console.error('DEBUG: Failed to fetch labels.', labelsData);
+        throw new Error('Failed to fetch Gmail labels.');
+    }
+
+    const existingLabel = labelsData.labels.find(label => label.name === categoryName);
+    if (existingLabel) {
+        console.log(`DEBUG: Found existing label "${categoryName}" with ID: ${existingLabel.id}`);
+        return existingLabel.id;
+    }
+
+    console.log(`DEBUG: Label "${categoryName}" not found. Creating it.`);
+    const createResponse = await fetch(`${GMAIL_API}/labels`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: categoryName, labelListVisibility: 'labelShow', messageListVisibility: 'show' }),
+    });
+    const newLabel = await createResponse.json();
+
+    if (createResponse.ok && newLabel.id) {
+        console.log(`DEBUG: Label "${categoryName}" created successfully with ID: ${newLabel.id}`);
+        return newLabel.id;
+    }
+
+    console.error(`DEBUG: Failed to create label "${categoryName}". Response:`, newLabel);
+    throw new Error(`Failed to create label "${categoryName}".`);
+}
+
+// Applies a label to an email and removes it from the inbox
+async function applyLabel(token, messageId, categoryName) {
+    console.log(`DEBUG: Starting applyLabel for message ${messageId} with category "${categoryName}".`);
+    try {
+        const labelId = await findOrCreateLabel(token, categoryName);
         const modifyUrl = `${GMAIL_API}/messages/${messageId}/modify`;
         const modifyPayload = {
             addLabelIds: [labelId],
             removeLabelIds: ['INBOX']
         };
+
         console.log(`DEBUG: Modifying email ${messageId} at ${modifyUrl} with payload:`, JSON.stringify(modifyPayload));
         const modifyResponse = await fetch(modifyUrl, {
             method: 'POST',
@@ -230,7 +262,7 @@ async function applyLabel(token, messageId, category) {
         });
 
         if (modifyResponse.ok) {
-            console.log(`DEBUG: Successfully modified email ${messageId}. Moved to label "${category}".`);
+            console.log(`DEBUG: Successfully moved email ${messageId} to label "${categoryName}".`);
         } else {
             const errorData = await modifyResponse.json();
             console.error(`DEBUG: Failed to modify email ${messageId}. Status: ${modifyResponse.status}. Response:`, errorData);
@@ -240,7 +272,7 @@ async function applyLabel(token, messageId, category) {
     }
 }
 
-// Send notification
+// Sends a desktop notification
 function sendNotification(category, emailSnippet) {
     const notificationId = `gmail-sorter-${category}-${Date.now()}`;
     console.log(`DEBUG: Creating notification with ID: ${notificationId}`);
@@ -250,4 +282,68 @@ function sendNotification(category, emailSnippet) {
         title: `New Email in ${category}`,
         message: emailSnippet,
     });
+}
+
+
+// Listener for messages from the popup
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.action === "checkUsage") {
+        (async () => {
+            try {
+                const token = await authenticate();
+                const { projectId, model } = request.details;
+
+                const billingResponse = await fetch(`https://cloudbilling.googleapis.com/v1/projects/${projectId}/billingInfo`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!billingResponse.ok) {
+                    const errorText = await billingResponse.text();
+                    throw new Error(`Billing check failed with status ${billingResponse.status}: ${errorText}`);
+                }
+                const billingInfo = await billingResponse.json();
+                const accountTier = billingInfo.billingEnabled ? 'Paid' : 'Free';
+
+                const quotaResponse = await fetch(`https://serviceusage.googleapis.com/v1beta1/projects/${projectId}/services/aiplatform.googleapis.com/consumerQuotaMetrics`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (!quotaResponse.ok) {
+                    const errorText = await quotaResponse.text();
+                    throw new Error(`Quota check failed with status ${quotaResponse.status}: ${errorText}`);
+                }
+                
+                const quotaData = await quotaResponse.json();
+                
+                const rpmQuota = findModelQuota(quotaData.metrics, '/requests-per-minute-per-model', model);
+                const rpdQuota = findModelQuota(quotaData.metrics, '/requests-per-day-per-model', model);
+
+                sendResponse({
+                    accountTier,
+                    rpmQuota,
+                    rpdQuota
+                });
+
+            } catch (error) {
+                console.error("Error checking usage in background:", error);
+                sendResponse({ error: error.message });
+            }
+        })();
+        return true;
+    }
+});
+
+// Helper function in background script
+function findModelQuota(metrics, metricName, selectedModel) {
+    const metric = metrics.find(m => m.name.endsWith(metricName));
+    if (!metric) return null;
+
+    const quotaLimit = metric.consumerQuotaLimits[0]; 
+    if (!quotaLimit || !quotaLimit.quotaBuckets) return null;
+
+    const bucket = quotaLimit.quotaBuckets.find(b => b.dimensions?.model === selectedModel);
+
+    return bucket ? {
+        limit: bucket.effectiveLimit,
+        usage: bucket.currentUsage || 0
+    } : null;
 }

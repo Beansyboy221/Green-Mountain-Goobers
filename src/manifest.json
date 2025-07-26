@@ -11,19 +11,33 @@
     ],
     "host_permissions": [
         "https://mail.google.com/*",
-        "https://www.googleapis.com/*"
+        "https://*.googleapis.com/*"
     ],
     "background": {
         "service_worker": "background.js"
     },
     "action": {
-        "default_popup": "popup.html"
+        "default_popup": "popup.html",
+        "default_icon": {
+            "16": "icon.png",
+            "48": "icon.png",
+            "128": "icon.png"
+        }
     },
+    "web_accessible_resources": [
+        {
+        "resources": [ "prompt.txt" ],
+        "matches": [ "<all_urls>" ]
+        }
+    ],
     "oauth2": {
         "client_id": "730722530622-a1tneqpskb0439rlj05005sk88mf488g.apps.googleusercontent.com",
         "scopes": [
+            "https://www.googleapis.com/auth/gmail.labels",
+            "https://www.googleapis.com/auth/gmail.readonly",
             "https://www.googleapis.com/auth/gmail.modify",
-            "https://www.googleapis.com/auth/gmail.labels"
+            "https://www.googleapis.com/auth/cloud-billing.readonly",
+            "https://www.googleapis.com/auth/cloud-platform.read-only"
         ]
     }
 }
