@@ -9,7 +9,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const autoCategoryToggle = document.getElementById('auto-category-toggle');
     const autoCategoryLimit = document.getElementById('auto-category-limit');
     const masterToggle = document.getElementById('master-toggle');
-    const saveProjectIdButton = document.getElementById('save-project-id');
 
     // Load all existing settings from storage
     chrome.storage.sync.get(['categories', 'geminiApiKey', 'geminiModel', 'googleClientId', 'autoCategoryToggle', 'autoCategoryLimit', 'masterToggleEnabled', 'googleProjectId'], (result) => {
