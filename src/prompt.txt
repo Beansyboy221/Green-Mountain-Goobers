@@ -25,5 +25,20 @@ Example of your required output format:
   }
 ]
 
+<<<<<<< HEAD
+3. Check Existing Categories: After reviewing the history, check the user's complete list of existing categories: {{categoryNames}}. Does the email's primary subject and intent clearly fit into one of these, based on your understanding from the history? If yes, respond with ONLY the name of that existing category.
+
+4. Generate a New Category (If No Match): If, and only if, the email does not fit any existing category or past example, you must create a new one. This new category name must be:
+* Specific and Actionable: It should summarize the email's specific purpose. Instead of "Update," use "Project Update" or "Shipping Notification."
+* Concise: Between 1 and 2 words.
+* Simple and Clear: Easy for a human to understand at a glance.
+
+* Good examples: Project Proposal, Invoice, Weekly Newsletter, Flight Confirmation, Bug Report, Job Application
+
+Your final output must be ONLY the chosen or newly generated category name.
+
+Email Snippet to Categorize: "{{emailContent}}"
+=======
 Email Batch to Categorize:
 {{emailBatch}}
+>>>>>>> 5da7b9f4b1b90a9749945c5f69ca59f233742ada
