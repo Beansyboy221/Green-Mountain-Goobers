@@ -1,24 +1,10 @@
-## 2. `ARCHITECTURE.md`
+# 2. `ARCHITECTURE.md`
 
 ```markdown
 # Architecture Overview
 
 Below, sketch (ASCII, hand-drawn JPEG/PNG pasted in, or ASCII art) the high-level components of your agent.
 
-## Components
+## Diagram
 
-1. **User Interface**  
-   - E.g., Streamlit, CLI, Slack bot  
-
-2. **Agent Core**  
-   - **Planner**: how you break down tasks  
-   - **Executor**: LLM prompt + tool-calling logic  
-   - **Memory**: vector store, cache, or on-disk logs  
-
-3. **Tools / APIs**  
-   - E.g., Google Gemini API, Tools, etc
-
-4. **Observability**  
-   - Logging of each reasoning step  
-   - Error handling / retries  
-
+![Architecture Diagram](images/diagram.png "Architecture Diagram")

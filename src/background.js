@@ -1,5 +1,6 @@
 const GMAIL_API = 'https://www.googleapis.com/gmail/v1/users/me';
 const ALARM_NAME = 'gmailSorterAlarm';
+const MEMORY_SIZE = 50; // Max number of past categorizations to remember
 
 // Authenticate with Gmail API
 async function authenticate() {
@@ -51,18 +52,12 @@ async function processNewEmails() {
     try {
         const result = await chrome.storage.sync.get(['masterToggleEnabled', 'categories']);
         
-        // Check master toggle. Defaults to true (enabled) if not set.
         if (result.masterToggleEnabled === false) {
             console.log('DEBUG: Master toggle is disabled. Skipping inbox check.');
             return 'Inbox checking is disabled.';
         }
 
-        let categories = result.categories;
-
-        if (!categories?.length) {
-            console.log('DEBUG: No categories defined. Stopping.');
-            return 'No categories defined. Stopping.';
-        }
+        let categories = result.categories || [];
 
         const token = await authenticate();
         const emails = await fetchInboxMessages(token);
@@ -120,6 +115,7 @@ async function processSingleEmail(email, token, categories) {
         const { categoryName, updatedCategories } = await categorizeEmail(emailContent, categories);
         console.log(`DEBUG: Email ${email.id} classified as "${categoryName}" by Gemini.`);
         await applyLabel(token, email.id, categoryName);
+        await updateCategorizationHistory(emailContent, categoryName);
 
         const categoryObject = updatedCategories.find(c => c.name === categoryName);
         if (categoryObject?.notify) {
@@ -134,15 +130,33 @@ async function processSingleEmail(email, token, categories) {
     }
 }
 
+// Stores the result of a categorization to build a memory for the agent
+async function updateCategorizationHistory(snippet, category) {
+    console.log('DEBUG: Updating categorization history.');
+    try {
+        const result = await chrome.storage.sync.get(['categorizationHistory']);
+        const history = result.categorizationHistory || [];
+
+        const newHistory = [{ snippet, category }, ...history.filter(item => item.snippet !== snippet)];
+        const trimmedHistory = newHistory.slice(0, MEMORY_SIZE);
+
+        await chrome.storage.sync.set({ categorizationHistory: trimmedHistory });
+        console.log(`DEBUG: Categorization history updated. New size: ${trimmedHistory.length}`);
+    } catch (error) {
+        console.error('DEBUG: Could not update categorization history.', error.message, error.stack);
+    }
+}
+
 // Classifies email content into a category using Gemini
 async function categorizeEmail(emailContent, categories) {
     console.log('DEBUG: Starting categorizeEmail.');
-    const settings = await chrome.storage.sync.get(['geminiApiKey', 'geminiModel', 'autoCategoryToggle', 'autoCategoryLimit']);
+    const settings = await chrome.storage.sync.get(['geminiApiKey', 'geminiModel', 'autoCategoryToggle', 'autoCategoryLimit', 'categorizationHistory']);
     const {
         geminiApiKey,
         geminiModel = 'gemini-2.0-flash-lite',
         autoCategoryToggle = false,
-        autoCategoryLimit = 5
+        autoCategoryLimit = 5,
+        categorizationHistory
     } = settings;
 
     if (!geminiApiKey) {
@@ -160,8 +174,13 @@ async function categorizeEmail(emailContent, categories) {
 
     const categoryNames = currentCategories.map(c => c.name).join(', ');
     
+    const formattedHistory = (categorizationHistory && categorizationHistory.length > 0)
+        ? categorizationHistory.map(item => `Email: "${item.snippet}"\nCategory: ${item.category}`).join('\n\n')
+        : "No history available. You will be the first to categorize an email.";
+
     const prompt = promptTemplate
         .replace('{{categoryNames}}', categoryNames)
+        .replace('{{history}}', formattedHistory)
         .replace('{{emailContent}}', emailContent);
 
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiApiKey}`;
