@@ -6,17 +6,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const apiKeyInput = document.getElementById('api-key');
     const saveApiKeyButton = document.getElementById('save-api-key');
     const clientIdInput = document.getElementById('client-id');
-    const saveClientIdButton = document.getElementById('save-client-id');
     const autoCategoryToggle = document.getElementById('auto-category-toggle');
     const autoCategoryLimit = document.getElementById('auto-category-limit');
     const masterToggle = document.getElementById('master-toggle');
-    const projectIdInput = document.getElementById('project-id');
     const saveProjectIdButton = document.getElementById('save-project-id');
-    const checkUsageButton = document.getElementById('check-usage');
-    const accountTierSpan = document.getElementById('account-tier');
-    const selectedModelNameSpan = document.getElementById('selected-model-name');
-    const requestsPerMinuteSpan = document.getElementById('requests-per-minute');
-    const requestsPerDaySpan = document.getElementById('requests-per-day');
 
     // Load all existing settings from storage
     chrome.storage.sync.get(['categories', 'geminiApiKey', 'geminiModel', 'googleClientId', 'autoCategoryToggle', 'autoCategoryLimit', 'masterToggleEnabled', 'googleProjectId'], (result) => {
@@ -31,9 +24,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (result.googleClientId) {
             clientIdInput.value = result.googleClientId;
-        }
-        if (result.googleProjectId) {
-            projectIdInput.value = result.googleProjectId;
         }
         if (result.autoCategoryToggle) {
             autoCategoryToggle.checked = result.autoCategoryToggle;
@@ -69,86 +59,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 alert('Gemini model saved!');
             });
         }
-    });
-
-
-    // Save Google Client ID
-    saveClientIdButton.addEventListener('click', () => {
-        const clientId = clientIdInput.value.trim();
-        if (clientId && clientId.endsWith('.apps.googleusercontent.com')) {
-            chrome.storage.sync.set({ googleClientId: clientId }, () => {
-                alert('Google Client ID saved!');
-            });
-        } else {
-            alert('Please enter a valid Google Client ID.');
-        }
-    });
-
-    // Save Project ID
-    saveProjectIdButton.addEventListener('click', () => {
-        const projectId = projectIdInput.value.trim();
-        if (projectId) {
-            chrome.storage.sync.set({ googleProjectId: projectId }, () => {
-                alert('Google Cloud Project ID saved!');
-            });
-        } else {
-            alert('Please enter a valid Google Cloud Project ID.');
-        }
-    });
-
-    // Check Usage by sending a message to the background script
-    checkUsageButton.addEventListener('click', async () => {
-        const { googleProjectId } = await chrome.storage.sync.get('googleProjectId');
-        const selectedModel = geminiModelInput.value;
-
-        if (!googleProjectId) {
-            alert('Please save a Google Cloud Project ID first.');
-            return;
-        }
-
-        selectedModelNameSpan.textContent = selectedModel;
-        requestsPerMinuteSpan.textContent = "Checking...";
-        requestsPerDaySpan.textContent = "Checking...";
-        accountTierSpan.textContent = "Checking...";
-
-        chrome.runtime.sendMessage({
-            action: "checkUsage",
-            details: {
-                projectId: googleProjectId,
-                model: selectedModel
-            }
-        }, (response) => {
-            if (chrome.runtime.lastError) {
-                alert(`Error: ${chrome.runtime.lastError.message}`);
-                accountTierSpan.textContent = "Error";
-                requestsPerMinuteSpan.textContent = "Error";
-                requestsPerDaySpan.textContent = "Error";
-                return;
-            }
-
-            if (response.error) {
-                alert(`Error checking usage: ${response.error}`);
-                accountTierSpan.textContent = "Error";
-                requestsPerMinuteSpan.textContent = "Error";
-                requestsPerDaySpan.textContent = "Error";
-            } else {
-                accountTierSpan.textContent = response.accountTier;
-
-                if (response.rpmQuota) {
-                    const remaining = parseInt(response.rpmQuota.limit) - parseInt(response.rpmQuota.usage);
-                    requestsPerMinuteSpan.textContent = `${remaining} / ${response.rpmQuota.limit}`;
-                } else {
-                    requestsPerMinuteSpan.textContent = 'N/A';
-                }
-
-                if (response.rpdQuota) {
-                    const remaining = parseInt(response.rpdQuota.limit) - parseInt(response.rpdQuota.usage);
-                    requestsPerDaySpan.textContent = `${remaining} / ${response.rpdQuota.limit}`;
-                } else {
-                    requestsPerDaySpan.textContent = 'N/A';
-                }
-            }
-        });
     });
 
     // Add new category

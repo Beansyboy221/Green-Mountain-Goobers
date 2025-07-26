@@ -8,6 +8,6 @@ Concise: Between 1 and 2 words.
 Simple and Clear: Easy for a human to understand at a glance.
 Good vs. Bad New Category Examples:
 Good examples: Project Proposal, Invoice, Weekly Newsletter, Flight Confirmation, Bug Report, Job Application
-Bad examples: General Inquiry, Vague Message, Uncategorized, Miscellaneous, Important, Email, Empty Email, Garbled
+Bad examples: General Inquiry, Vague Message, Uncategorized, Miscellaneous, Important, Email, Empty Email, Garbled, Spam, Important, Social
 Your final output must be ONLY the chosen or newly generated category name.
 Email Snippet: "{{emailContent}}"

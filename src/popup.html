@@ -12,16 +12,11 @@
         <label for="master-toggle">Enable AutoSorter:</label>
         <input type="checkbox" id="master-toggle">
     </div>
+    <hr>
     <div>
         <label for="api-key">Gemini API Key:</label>
         <input type="text" id="api-key" placeholder="Enter Gemini API Key">
         <button id="save-api-key">Save</button>
-    </div>
-    <hr>
-    <div>
-        <label for="project-id">Google Cloud Project ID:</label>
-        <input type="text" id="project-id" placeholder="Enter Google Cloud Project ID">
-        <button id="save-project-id">Save</button>
     </div>
     <div>
         <label for="gemini-model">Gemini Model:</label>
@@ -35,26 +30,17 @@
             <option value="gemini-1.5-flash">gemini-1.5-flash</option>
         </select>
     </div>
-    <div id="usage-info">
-        <p><strong>Account Tier:</strong> <span id="account-tier">N/A</span></p>
-        <p><strong>Model Usage for <span id="selected-model-name"></span>:</strong></p>
-        <ul>
-            <li>Requests per minute: <strong id="requests-per-minute">N/A</strong></li>
-            <li>Requests per day: <strong id="requests-per-day">N/A</strong></li>
-        </ul>
-        <button id="check-usage">Check Usage</button>
-    </div>
     <hr>
-    <div id="category-list"></div>
-    <input type="text" id="new-category" placeholder="Add new category">
-    <button id="add-category">Add</button>
-    <script src="popup.js"></script>
     <div>
         <label for="auto-category-toggle">Auto-categorize emails:</label>
         <input type="checkbox" id="auto-category-toggle">
         <label for="auto-category-limit">Max auto-categories:</label>
         <input type="number" id="auto-category-limit" value="5" min="1" max="20">
     </div>
+    <input type="text" id="new-category" placeholder="Add new category">
+    <button id="add-category">Add</button>
+    <script src="popup.js"></script>
+    <div id="category-list"></div>
 </body>
 
 </html>

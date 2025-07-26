@@ -140,7 +140,7 @@ async function categorizeEmail(emailContent, categories) {
     const settings = await chrome.storage.sync.get(['geminiApiKey', 'geminiModel', 'autoCategoryToggle', 'autoCategoryLimit']);
     const {
         geminiApiKey,
-        geminiModel = 'gemini-1.5-flash-latest',
+        geminiModel = 'gemini-2.0-flash-lite',
         autoCategoryToggle = false,
         autoCategoryLimit = 5
     } = settings;
@@ -282,68 +282,4 @@ function sendNotification(category, emailSnippet) {
         title: `New Email in ${category}`,
         message: emailSnippet,
     });
-}
-
-
-// Listener for messages from the popup
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === "checkUsage") {
-        (async () => {
-            try {
-                const token = await authenticate();
-                const { projectId, model } = request.details;
-
-                const billingResponse = await fetch(`https://cloudbilling.googleapis.com/v1/projects/${projectId}/billingInfo`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (!billingResponse.ok) {
-                    const errorText = await billingResponse.text();
-                    throw new Error(`Billing check failed with status ${billingResponse.status}: ${errorText}`);
-                }
-                const billingInfo = await billingResponse.json();
-                const accountTier = billingInfo.billingEnabled ? 'Paid' : 'Free';
-
-                const quotaResponse = await fetch(`https://serviceusage.googleapis.com/v1beta1/projects/${projectId}/services/aiplatform.googleapis.com/consumerQuotaMetrics`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-
-                if (!quotaResponse.ok) {
-                    const errorText = await quotaResponse.text();
-                    throw new Error(`Quota check failed with status ${quotaResponse.status}: ${errorText}`);
-                }
-                
-                const quotaData = await quotaResponse.json();
-                
-                const rpmQuota = findModelQuota(quotaData.metrics, '/requests-per-minute-per-model', model);
-                const rpdQuota = findModelQuota(quotaData.metrics, '/requests-per-day-per-model', model);
-
-                sendResponse({
-                    accountTier,
-                    rpmQuota,
-                    rpdQuota
-                });
-
-            } catch (error) {
-                console.error("Error checking usage in background:", error);
-                sendResponse({ error: error.message });
-            }
-        })();
-        return true;
-    }
-});
-
-// Helper function in background script
-function findModelQuota(metrics, metricName, selectedModel) {
-    const metric = metrics.find(m => m.name.endsWith(metricName));
-    if (!metric) return null;
-
-    const quotaLimit = metric.consumerQuotaLimits[0]; 
-    if (!quotaLimit || !quotaLimit.quotaBuckets) return null;
-
-    const bucket = quotaLimit.quotaBuckets.find(b => b.dimensions?.model === selectedModel);
-
-    return bucket ? {
-        limit: bucket.effectiveLimit,
-        usage: bucket.currentUsage || 0
-    } : null;
 }
