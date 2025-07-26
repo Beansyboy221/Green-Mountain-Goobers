@@ -215,6 +215,7 @@ The extension requires these permissions:
 ### Supported Browsers
 
 - **Google Chrome**: Full support (recommended)
+
 - **Other Chromium-based browsers**: May work with limitations
 
 ### System Requirements
