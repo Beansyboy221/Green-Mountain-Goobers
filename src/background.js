@@ -1,6 +1,8 @@
 const GMAIL_API = 'https://www.googleapis.com/gmail/v1/users/me';
 const ALARM_NAME = 'gmailSorterAlarm';
 const HISTORY_BYTE_LIMIT = 8000; // chrome.storage.sync.QUOTA_BYTES_PER_ITEM is 8,192
+const API_BATCH_SIZE = 20; // Process 20 requests at a time
+const API_BATCH_DELAY = 1000; // 1-second delay between batches
 
 // --- State Lock ---
 let isProcessingEmails = false;
@@ -189,6 +191,9 @@ async function categorizeEmailBatch(emailDetails, categories) {
 
 // --- Helper Functions ---
 
+// General purpose delay helper
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
 // Authenticates with Google and retrieves an OAuth token.
 async function authenticate() {
     console.log('DEBUG: Attempting to authenticate.');
@@ -227,7 +232,7 @@ async function _fetchAllGmailLabels(token) {
     return data.labels || [];
 }
 
-// Fetches all message IDs for a given label, handling pagination.
+// Fetches all message IDs for a given label, handling pagination and rate-limiting.
 async function _fetchAllMessagesForLabel(token, labelId) {
     let messages = [];
     let nextPageToken = null;
@@ -244,30 +249,56 @@ async function _fetchAllMessagesForLabel(token, labelId) {
             messages.push(...data.messages);
         }
         nextPageToken = data.nextPageToken;
+
+        // Add a small delay between page fetches to avoid hitting rate limits.
+        if (nextPageToken) {
+            await delay(300); 
+        }
     } while (nextPageToken);
     console.log(`DEBUG: Found ${messages.length} total messages for label ID ${labelId}.`);
     return messages;
 }
 
-// Moves a batch of messages to the Inbox and removes the specified label.
+// Moves a batch of messages to the Inbox by processing them in throttled chunks.
 async function _moveMessagesToInbox(token, messages, labelIdToRemove) {
     console.log(`DEBUG: Moving ${messages.length} messages to inbox.`);
-    let movedCount = 0;
-    const promises = messages.map(message => {
-        const url = `${GMAIL_API}/messages/${message.id}/modify`;
-        const payload = { addLabelIds: ['INBOX'], removeLabelIds: [labelIdToRemove] };
-        return fetch(url, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-        }).then(res => {
-            if (res.ok) movedCount++;
-            else console.error(`DEBUG: Failed to move message ${message.id}.`);
+    let totalMovedCount = 0;
+
+    for (let i = 0; i < messages.length; i += API_BATCH_SIZE) {
+        const batch = messages.slice(i, i + API_BATCH_SIZE);
+        console.log(`DEBUG: Moving batch ${i / API_BATCH_SIZE + 1}...`);
+        
+        const promises = batch.map(message => {
+            const url = `${GMAIL_API}/messages/${message.id}/modify`;
+            const payload = { addLabelIds: ['INBOX'], removeLabelIds: [labelIdToRemove] };
+            return fetch(url, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            }).then(res => {
+                if (res.ok) {
+                    return 1;
+                }
+                console.error(`DEBUG: Failed to move message ${message.id}. Status: ${res.statusText}`);
+                return 0;
+            }).catch(err => {
+                console.error(`DEBUG: Error moving message ${message.id}.`, err);
+                return 0;
+            });
         });
-    });
-    await Promise.all(promises);
-    console.log(`DEBUG: Successfully moved ${movedCount} messages.`);
-    return movedCount;
+
+        const results = await Promise.all(promises);
+        const batchMovedCount = results.reduce((sum, count) => sum + count, 0);
+        totalMovedCount += batchMovedCount;
+        
+        // Wait before processing the next batch, if there is one.
+        if (i + API_BATCH_SIZE < messages.length) {
+            await delay(API_BATCH_DELAY);
+        }
+    }
+    
+    console.log(`DEBUG: Successfully moved ${totalMovedCount} out of ${messages.length} messages.`);
+    return totalMovedCount;
 }
 
 // Deletes a single Gmail label.
@@ -285,19 +316,35 @@ async function _deleteGmailLabel(token, label) {
     return false;
 }
 
-// Fetches the full details (ID and snippet) for a list of email metadata.
+// Fetches email details in throttled batches to avoid rate-limiting.
 async function _fetchEmailDetails(token, emailMetas) {
-    const promises = emailMetas.map(meta =>
-        fetch(`${GMAIL_API}/messages/${meta.id}?format=minimal`, { headers: { Authorization: `Bearer ${token}` } })
-            .then(res => res.ok ? res.json() : Promise.reject(`Failed status: ${res.status}`))
-            .then(data => ({ id: meta.id, snippet: data.snippet }))
-            .catch(error => {
-                console.error(`DEBUG: Failed to fetch email content for ID ${meta.id}.`, error);
-                return null;
-            })
-    );
-    const results = await Promise.all(promises);
-    return results.filter(Boolean); // Filter out any nulls from failed fetches
+    let detailedEmails = [];
+    console.log(`DEBUG: Fetching details for ${emailMetas.length} emails in batches.`);
+
+    for (let i = 0; i < emailMetas.length; i += API_BATCH_SIZE) {
+        const batch = emailMetas.slice(i, i + API_BATCH_SIZE);
+        console.log(`DEBUG: Fetching details for batch ${i / API_BATCH_SIZE + 1}...`);
+        
+        const promises = batch.map(meta =>
+            fetch(`${GMAIL_API}/messages/${meta.id}?format=minimal`, { headers: { Authorization: `Bearer ${token}` } })
+                .then(res => res.ok ? res.json() : Promise.reject(`Failed status: ${res.status}`))
+                .then(data => ({ id: meta.id, snippet: data.snippet }))
+                .catch(error => {
+                    console.error(`DEBUG: Failed to fetch email content for ID ${meta.id}.`, error);
+                    return null;
+                })
+        );
+        const results = await Promise.all(promises);
+        detailedEmails.push(...results.filter(Boolean)); // Filter out any nulls
+
+        // Wait before processing the next batch, if there is one.
+        if (i + API_BATCH_SIZE < emailMetas.length) {
+            await delay(API_BATCH_DELAY);
+        }
+    }
+    
+    console.log(`DEBUG: Successfully fetched details for ${detailedEmails.length} emails.`);
+    return detailedEmails;
 }
 
 // Constructs the prompt for the Gemini API.
