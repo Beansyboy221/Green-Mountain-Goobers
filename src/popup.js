@@ -24,7 +24,7 @@ async function initializePopup() {
     categories.forEach(category => addCategoryToUI(category.name, category.notify, category.auto_generated));
 
     // Populate settings
-    geminiModelInput.value = settings.geminiModel || 'gemini-1.5-flash-latest';
+    geminiModelInput.value = settings.geminiModel || 'gemini-2.5-flash';
     apiKeyInput.value = settings.geminiApiKey || '';
     autoCategoryToggle.checked = settings.autoCategoryToggle || false;
     autoCategoryLimit.value = settings.autoCategoryLimit || 5;
