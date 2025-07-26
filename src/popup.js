@@ -82,7 +82,7 @@ document.addEventListener('DOMContentLoaded', () => {
         div.innerHTML = `
             <span>${name}</span>
             <input type="checkbox" ${notify ? 'checked' : ''} data-name="${name}">
-            <button class="delete-category">Delete</button>
+            <button class="delete-category" style="background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%); color: white;">Delete</button>
         `;
         categoryList.appendChild(div);
         div.querySelector('input').addEventListener('change', (e) => {

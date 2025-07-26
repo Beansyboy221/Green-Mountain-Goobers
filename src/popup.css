@@ -19,9 +19,10 @@ h2 {
 div {
     background: white;
     border-radius: 12px;
-    padding: 16px;
+    padding: 12px;
     margin-bottom: 12px;
     box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 label {
@@ -30,9 +31,12 @@ label {
     color: #333;
     font-weight: 500;
     font-size: 0.9em;
+    font-family: inherit;
 }
 
-input[type="text"] {
+input[type="text"],
+input[type="number"],
+select {
     width: 100%;
     padding: 10px 12px;
     border: 2px solid #e1e5e9;
@@ -41,13 +45,23 @@ input[type="text"] {
     box-sizing: border-box;
     transition: all 0.3s ease;
     background: #f8f9fa;
+    font-family: inherit;
 }
 
-input[type="text"]:focus {
+input[type="text"]:focus,
+input[type="number"]:focus,
+select:focus {
     outline: none;
     border-color: #667eea;
     background: white;
     box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+input[type="checkbox"] {
+    transform: scale(1.1);
+    margin-right: 8px;
+    vertical-align: middle;
+    cursor: pointer;
 }
 
 button {
@@ -62,6 +76,7 @@ button {
     transition: all 0.3s ease;
     margin-top: 8px;
     box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+    font-family: inherit;
 }
 
 button:hover {
@@ -76,7 +91,7 @@ button:active {
 #category-list {
     background: white;
     border-radius: 12px;
-    padding: 16px;
+    padding: 12px;
     margin-bottom: 12px;
     box-shadow: 0 4px 15px rgba(0,0,0,0.1);
 }
@@ -85,11 +100,23 @@ button:active {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 8px 12px;
+    padding: 6px 10px;
     margin: 4px 0;
     background: #f8f9fa;
     border-radius: 6px;
     border-left: 4px solid #667eea;
+    font-family: inherit;
+    font-size: 14px;
+}
+
+.category-item span {
+    flex: 1;
+    font-family: inherit;
+}
+
+.category-item input[type="checkbox"] {
+    margin-left: auto;
+    margin-right: 6px;
 }
 
 hr {
@@ -98,3 +125,74 @@ hr {
     background: linear-gradient(90deg, transparent, #667eea, transparent);
     margin: 20px 0;
 }
+
+
+#add-category {
+    margin-bottom: 10px;
+}
+
+
+#auto-category-toggle,
+#auto-category-limit {
+    margin-left: auto;
+}
+
+
+#auto-category-toggle:before,
+#auto-category-limit:before {
+    content: '';
+    display: block;
+}
+
+#auto-category-toggle,
+#auto-category-limit,
+label[for="auto-category-toggle"],
+label[for="auto-category-limit"] {
+    display: inline-block;
+    vertical-align: middle;
+}
+
+label[for="auto-category-toggle"],
+label[for="auto-category-limit"] {
+    width: 60%;
+    font-size: 0.9em;
+}
+
+#auto-category-toggle {
+    transform: scale(1.1);
+    margin-top: -2px;
+}
+
+#auto-category-limit {
+    width: 30%;
+}
+
+#auto-category-limit {
+    width: 60px; 
+    padding: 8px 10px;
+    font-size: 14px;
+    margin-left: auto;
+}
+
+.toggle-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: white;
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 12px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.toggle-row label {
+    margin: 0;
+    font-size: 0.9em;
+    flex: 1;
+}
+
+#master-toggle {
+    transform: scale(1.1);
+}
+
