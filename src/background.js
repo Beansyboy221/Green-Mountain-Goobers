@@ -1,6 +1,6 @@
 const GMAIL_API = 'https://www.googleapis.com/gmail/v1/users/me';
 const ALARM_NAME = 'gmailSorterAlarm';
-const MEMORY_SIZE = 50; // Max number of past categorizations to remember
+const MEMORY_SIZE = 10; // Max number of past categorizations to remember
 
 // Authenticate with Gmail API
 async function authenticate() {
@@ -29,7 +29,7 @@ function setupAlarm() {
         if (!alarm) {
             chrome.alarms.create(ALARM_NAME, {
                 delayInMinutes: 1,
-                periodInMinutes: 2
+                periodInMinutes: 1
             });
             console.log('DEBUG: Gmail Sorter alarm created.');
         } else {
